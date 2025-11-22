@@ -261,11 +261,10 @@ export class GameManager {
         player.voted = false;
         player.voteTarget = null;
         
-        // Assign tasks to crew members
-        if (player.role === Role.CREW) {
-          const task = generateTask();
-          this.game.taskAssignments.set(player.inboxId, task);
-        }
+        // Assign tasks to all players (including mafia)
+        // Mafia gets a fake task that they can't complete, but it looks the same
+        const task = generateTask();
+        this.game.taskAssignments.set(player.inboxId, task);
       }
     }
   }
@@ -301,6 +300,11 @@ export class GameManager {
   async completeTask(inboxId: string, answer: string): Promise<boolean> {
     const player = this.game.players.get(inboxId);
     if (!player || !player.isAlive) {
+      return false;
+    }
+
+    // Mafia cannot complete tasks (they get fake tasks but can't actually complete them)
+    if (player.role === Role.IMPOSTOR) {
       return false;
     }
 

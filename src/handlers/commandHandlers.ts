@@ -192,10 +192,20 @@ export function setupJoinHandler(agent: Agent, gameManager: GameManager) {
 }
 
 // Handle /task command
+// Note: This command requires agent mention (handled by middleware)
 export function setupTaskHandler(gameManager: GameManager) {
   return async (ctx: any) => {
     const parsed = ctx.parsedCommand;
     if (!parsed || parsed.command !== "task") {
+      return;
+    }
+
+    // Ensure this is in a group (not DM) - tasks should be submitted in the lobby group
+    const isDM = ctx.conversation && !("addMembers" in ctx.conversation);
+    if (isDM) {
+      await ctx.sendText(
+        "❌ Task submissions should be done in the game lobby group, not in private messages.\n\nUse: @mafia /task <answer> in the lobby group."
+      );
       return;
     }
 
@@ -215,9 +225,12 @@ export function setupTaskHandler(gameManager: GameManager) {
         return;
       }
 
-      // Mafia can fake tasks but they don't actually complete
+      // Mafia can submit tasks but they don't actually complete
+      // Give them the same response as town to not reveal identity
       if (player.role === "IMPOSTOR") {
-        await ctx.sendText("✅ Task completed! (faked)");
+        // Mafia's task submission will always fail validation (handled in gameManager)
+        // But we give them a neutral response
+        await ctx.sendText("❌ Task answer incorrect. Try again.");
         return;
       }
 

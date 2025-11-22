@@ -16,6 +16,7 @@ import {
   CANCEL_GAME_WINDOW_MS,
   DISCUSSION_PHASE_DURATION_SECONDS,
 } from "../config/gameConfig.js";
+import { getPlayerAddress, formatAddressForMention } from "../utils/playerAddress.js";
 
 export async function startGame(agent: Agent, gameManager: GameManager) {
   try {
@@ -87,32 +88,37 @@ export async function startTaskPhase(
   if (!group) return;
 
   await group.send(
-    `🛠️ Round ${round} — Task Phase\n\nComplete your assigned task using: @mafia /task <value>`
+    `🛠️ Round ${round} — Task Phase\n\nComplete your assigned task by mentioning @mafia with your answer: @mafia /task <value>`
   );
 
-  // Send individual tasks to crew players via DM
+  // Send individual tasks to all players in the group (including mafia)
+  // Tasks are sent to the group with player address mentions
   for (const player of gameManager.getAlivePlayers()) {
-    if (player.role === "CREW") {
-      const task = gameManager.getTaskForPlayer(player.inboxId);
-      if (task) {
-        try {
-          const dm = await agent.client.conversations.newDm(player.inboxId);
-          await dm.send(
-            `🛠️ Task for you:\n\n${task.question}\n\nReply: @mafia /task <answer>`
-          );
-        } catch (error) {
-          console.error(`Failed to send task to ${player.username}:`, error);
-        }
-      }
-    } else if (player.role === "IMPOSTOR") {
-      // Mafia can fake tasks, but doesn't get a real task
+    const task = gameManager.getTaskForPlayer(player.inboxId);
+    if (task) {
       try {
-        const dm = await agent.client.conversations.newDm(player.inboxId);
-        await dm.send(
-          `🛠️ Round ${round} — Task Phase\n\nAs mafia, you can fake completing tasks, but they won't count.\nWait for the kill phase.`
+        // Get player address for mention
+        const playerAddress = await getPlayerAddress(agent, player.inboxId, group);
+        const addressMention = playerAddress
+          ? `@${formatAddressForMention(playerAddress)}`
+          : `@${player.username}`;
+
+        // Send task to group with player mention
+        // Mafia also gets a task (but it's fake - they can't complete it)
+        // Don't reveal who is mafia
+        await group.send(
+          `${addressMention}\n\n🛠️ Your Task:\n\n${task.question}\n\nSubmit your answer: @mafia /task <answer>`
         );
       } catch (error) {
-        console.error(`Failed to send mafia message:`, error);
+        console.error(`Failed to send task to ${player.username}:`, error);
+        // Fallback: send without address mention
+        try {
+          await group.send(
+            `@${player.username}\n\n🛠️ Your Task:\n\n${task.question}\n\nSubmit your answer: @mafia /task <answer>`
+          );
+        } catch (fallbackError) {
+          console.error(`Failed to send fallback task message:`, fallbackError);
+        }
       }
     }
   }
