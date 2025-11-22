@@ -323,7 +323,9 @@ export class GameManager {
       return false;
     }
 
-    const isCorrect = validateTaskAnswer(task, answer);
+    // Trim and normalize the answer before validation
+    const normalizedAnswer = answer.trim();
+    const isCorrect = validateTaskAnswer(task, normalizedAnswer);
     if (isCorrect) {
       task.completed = true;
       player.completedTasks++;
@@ -335,7 +337,7 @@ export class GameManager {
 
   async attemptKill(
     impostorInboxId: string,
-    targetUsername: string
+    targetIdentifier: string
   ): Promise<{ success: boolean; message: string }> {
     const impostor = this.game.players.get(impostorInboxId);
     if (!impostor || !impostor.isAlive || impostor.role !== Role.IMPOSTOR) {
@@ -358,15 +360,47 @@ export class GameManager {
       };
     }
 
-    // Find target player
-    const target = Array.from(this.game.players.values()).find(
-      (p) => p.username.toLowerCase() === targetUsername.toLowerCase() && p.isAlive
-    );
+    // Check if targetIdentifier looks like an address (starts with 0x and is 42 chars)
+    const isAddress = /^0x[a-fA-F0-9]{40}$/.test(targetIdentifier.trim());
+    
+    let target: Player | undefined;
+    
+    if (isAddress) {
+      // Find by address - need to get addresses for all players
+      const lobbyId = this.game.lobbyGroupId;
+      if (lobbyId) {
+        try {
+          const group = await this.agent.client.conversations.getConversationById(lobbyId);
+          if (group && "members" in group) {
+            const members = await group.members();
+            const targetMember = members.find(
+              (m: any) => 
+                m.accountIdentifiers?.[0]?.identifier?.toLowerCase() === targetIdentifier.trim().toLowerCase()
+            );
+            
+            if (targetMember) {
+              target = Array.from(this.game.players.values()).find(
+                (p) => p.inboxId.toLowerCase() === targetMember.inboxId.toLowerCase() && p.isAlive
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Error finding player by address:", error);
+        }
+      }
+    }
+    
+    // If not found by address, try by username
+    if (!target) {
+      target = Array.from(this.game.players.values()).find(
+        (p) => p.username.toLowerCase() === targetIdentifier.toLowerCase() && p.isAlive
+      );
+    }
 
     if (!target) {
       return {
         success: false,
-        message: `Player "${targetUsername}" not found or already eliminated.`,
+        message: `Player "${targetIdentifier}" not found or already eliminated.`,
       };
     }
 

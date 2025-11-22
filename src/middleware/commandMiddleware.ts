@@ -77,6 +77,9 @@ export function createCommandMiddleware(
     const isDM = ctx.conversation && !("addMembers" in ctx.conversation);
     console.log(`   Is DM: ${isDM}`);
 
+    // Parse command first to check if it's a kill command in DM
+    const parsed = parseCommand(content);
+    
     // For groups, verify agent is a member and require mention
     if (!isDM) {
       // Check if agent is in the group
@@ -103,9 +106,19 @@ export function createCommandMiddleware(
         console.log("=".repeat(60));
         return;
       }
+    } else {
+      // In DM: allow kill commands without mention, but other commands still need parsing
+      // Kill commands are handled specially - they don't need mention in DM
+      if (parsed && parsed.command === "kill") {
+        // Allow kill command in DM without mention
+        console.log(`   ✅ Kill command in DM (no mention required)`);
+        console.log("=".repeat(60));
+        (ctx as any).parsedCommand = parsed;
+        await next();
+        return;
+      }
     }
 
-    const parsed = parseCommand(content);
     if (!parsed) {
       console.log(
         "   ℹ️  Simple message (not a command) - will be handled by intro handler"

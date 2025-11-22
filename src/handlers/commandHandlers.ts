@@ -215,7 +215,7 @@ export function setupTaskHandler(gameManager: GameManager) {
         return;
       }
 
-      const answer = parsed.args.join(" ");
+      const answer = parsed.args.join(" ").trim();
       const player = gameManager.getPlayer(ctx.message.senderInboxId);
 
       if (!player || !player.isAlive) {
@@ -270,14 +270,15 @@ export function setupKillHandler(agent: Agent, gameManager: GameManager) {
 
     try {
       if (!parsed.args || parsed.args.length === 0) {
-        await ctx.sendText("Usage: @mafia kill <username>");
+        await ctx.sendText("Usage: kill <address> or kill <username>");
         return;
       }
 
-      const targetUsername = parsed.args.join(" ");
+      const target = parsed.args.join(" ");
+      // Try to find player by address first, then by username
       const result = await gameManager.attemptKill(
         ctx.message.senderInboxId,
-        targetUsername
+        target
       );
 
       await ctx.sendText(result.message);

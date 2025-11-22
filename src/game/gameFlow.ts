@@ -92,8 +92,10 @@ export async function startTaskPhase(
   );
 
   // Send individual tasks to all players in the group (including mafia)
-  // Tasks are sent to the group with player address mentions
-  for (const player of gameManager.getAlivePlayers()) {
+  // Tasks are sent one by one to the group with player address mentions
+  const players = gameManager.getAlivePlayers();
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i];
     const task = gameManager.getTaskForPlayer(player.inboxId);
     if (task) {
       try {
@@ -109,6 +111,11 @@ export async function startTaskPhase(
         await group.send(
           `${addressMention}\n\n🛠️ Your Task:\n\n${task.question}\n\nSubmit your answer: @mafia /task <answer>`
         );
+
+        // Add a small delay between task messages (1 second)
+        if (i < players.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       } catch (error) {
         console.error(`Failed to send task to ${player.username}:`, error);
         // Fallback: send without address mention
@@ -116,6 +123,10 @@ export async function startTaskPhase(
           await group.send(
             `@${player.username}\n\n🛠️ Your Task:\n\n${task.question}\n\nSubmit your answer: @mafia /task <answer>`
           );
+          // Add delay even for fallback
+          if (i < players.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
         } catch (fallbackError) {
           console.error(`Failed to send fallback task message:`, fallbackError);
         }
@@ -150,7 +161,7 @@ export async function startKillPhase(
     await dm.send(
       `Round ${round} Kill Phase.\n\n` +
         `Try killing a player using:\n` +
-        `@mafia kill <username>\n\n` +
+        `kill <address> or kill <username>\n\n` +
         `Success chance: ${(KILL_SUCCESS_CHANCE * 100).toFixed(0)}%\n` +
         `Max attempts: ${MAX_KILL_ATTEMPTS}\n` +
         `Cooldown: ${KILL_COOLDOWN_SECONDS} seconds per attempt\n\n` +
