@@ -128,6 +128,107 @@ export async function handleIntentMessage(
       } else {
         await ctx.sendText("❌ Cannot cancel game. Game has already started.");
       }
+    } else if (actionId.startsWith("kill-")) {
+      // Handle kill button click (DM only, Mafia only)
+      const isDM = ctx.conversation && !("addMembers" in ctx.conversation);
+      if (!isDM) {
+        await ctx.sendText("❌ Kill commands can only be used in private messages (DMs).");
+        return;
+      }
+
+      const targetInboxId = actionId.replace("kill-", "");
+      const targetPlayer = gameManager.getPlayer(targetInboxId);
+      
+      if (!targetPlayer) {
+        await ctx.sendText("❌ Target player not found.");
+        return;
+      }
+
+      // Attempt kill using the target's username
+      const result = await gameManager.attemptKill(
+        senderInboxId,
+        targetPlayer.username
+      );
+
+      await ctx.sendText(result.message);
+
+      // If kill was successful, announce to group
+      if (result.success) {
+        const lobbyId = gameManager.getGame().lobbyGroupId;
+        if (lobbyId) {
+          const group =
+            await agent.client.conversations.getConversationById(lobbyId);
+          if (group) {
+            await group.send(result.message);
+
+            // Check win condition
+            const winCheck = gameManager.checkWinCondition();
+            if (winCheck.gameEnded) {
+              const { endGame } = await import("../game/gameFlow.js");
+              await endGame(winCheck.winner, agent, gameManager);
+              return;
+            }
+
+            // Clear the kill phase timer since we're advancing early
+            const { clearPhaseTimer } = await import("../utils/timers.js");
+            const currentRound = gameManager.getGame().round;
+            clearPhaseTimer(`killPhase-${currentRound}`, gameManager);
+
+            // Advance to discussion phase after a short delay
+            setTimeout(async () => {
+              await gameManager.advancePhase();
+              const { startDiscussionPhase } = await import("../game/gameFlow.js");
+              await startDiscussionPhase(
+                gameManager.getGame().round,
+                agent,
+                gameManager
+              );
+            }, 2000);
+          }
+        }
+      }
+    } else if (actionId.startsWith("vote-")) {
+      // Handle vote button click (Group only)
+      const isDM = ctx.conversation && !("addMembers" in ctx.conversation);
+      if (isDM) {
+        await ctx.sendText("❌ Voting must be done in the game lobby group.");
+        return;
+      }
+
+      const targetInboxId = actionId.replace("vote-", "");
+      const targetPlayer = gameManager.getPlayer(targetInboxId);
+      
+      if (!targetPlayer) {
+        await ctx.sendText("❌ Target player not found.");
+        return;
+      }
+
+      const voter = gameManager.getPlayer(senderInboxId);
+      if (!voter || !voter.isAlive) {
+        await ctx.sendText("❌ You are not part of an active game or have been eliminated.");
+        return;
+      }
+
+      // Check if we're in a voting phase
+      const isVotingPhase =
+        gameManager.getState() === GameState.ROUND_1_VOTING ||
+        gameManager.getState() === GameState.ROUND_2_VOTING ||
+        gameManager.getState() === GameState.ROUND_3_VOTING;
+
+      if (!isVotingPhase) {
+        await ctx.sendText("❌ It's not the voting phase.");
+        return;
+      }
+
+      // Cast vote
+      if (voter.voted) {
+        await ctx.sendText(`✅ You changed your vote to ${targetPlayer.username}.`);
+      } else {
+        await ctx.sendText(`✅ You voted to eliminate ${targetPlayer.username}.`);
+      }
+
+      voter.voted = true;
+      voter.voteTarget = targetInboxId;
     } else {
       await ctx.sendText(`❌ Unknown action: ${actionId}`);
     }

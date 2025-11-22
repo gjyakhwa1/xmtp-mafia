@@ -20,6 +20,8 @@ import {
   KILL_PHASE_DURATION_SECONDS,
 } from "../config/gameConfig.js";
 import { getPlayerAddress, formatAddressForMention } from "../utils/playerAddress.js";
+import { sendKillButtons } from "../utils/killButtons.js";
+import { sendVotingButtons } from "../utils/voteButtons.js";
 
 export async function startGame(agent: Agent, gameManager: GameManager) {
   try {
@@ -171,20 +173,19 @@ export async function startKillPhase(
 
   try {
     const dm = await agent.client.conversations.newDm(impostorInboxId);
-    const aliveUsernames = gameManager
-      .getAlivePlayerUsernames()
-      .filter((u) => u !== impostor.username);
-
+    
+    // Send kill instructions
     await dm.send(
       `Round ${round} Kill Phase.\n\n` +
-        `Try killing a player using:\n` +
-        `kill <address> or kill <username>\n\n` +
         `Success chance: ${(KILL_SUCCESS_CHANCE * 100).toFixed(0)}%\n` +
         `Max attempts: ${MAX_KILL_ATTEMPTS}\n` +
         `Cooldown: ${KILL_COOLDOWN_SECONDS} seconds per attempt\n` +
         `Phase duration: ${KILL_PHASE_DURATION_SECONDS} seconds\n\n` +
-        `Alive players: ${aliveUsernames.join(", ")}`
+        `Select a target using the buttons below:`
     );
+
+    // Send kill buttons
+    await sendKillButtons(agent, dm, gameManager, round, impostorInboxId);
   } catch (error) {
     console.error("Failed to send kill phase DM:", error);
   }
@@ -235,13 +236,14 @@ export async function startVotingPhase(
   const group = await agent.client.conversations.getConversationById(lobbyId);
   if (!group) return;
 
-  const aliveUsernames = gameManager.getAlivePlayerUsernames();
-
+  // Send voting phase announcement
   await group.send(
     `🗳️ Voting Phase\n\n` +
-      `Use: @mafia vote <username>\n\n` +
-      `Alive players: ${aliveUsernames.join(", ")}`
+      `Vote to eliminate a player using the buttons below:`
   );
+
+  // Send voting buttons
+  await sendVotingButtons(agent, group, gameManager, round);
 
   // Reset votes
   for (const player of gameManager.getAlivePlayers()) {
